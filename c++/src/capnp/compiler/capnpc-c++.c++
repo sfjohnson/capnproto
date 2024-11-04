@@ -1172,6 +1172,7 @@ private:
     kj::StringTree readerMethodDecls;
     kj::StringTree builderMethodDecls;
     kj::StringTree pipelineMethodDecls;
+    kj::StringTree headerInlineMethodDefs;
     kj::StringTree inlineMethodDefs;
   };
 
@@ -1258,7 +1259,8 @@ private:
                   KJ_UNREACHABLE;
                 },
                 "  return typename ", scope, titleCase, "::Builder(_builder);\n"
-                "}\n")
+                "}\n"),
+                kj::strTree()
           };
       }
     }
@@ -1427,7 +1429,8 @@ private:
             "  _builder.setDataField<", type, ">(\n"
             "      ::capnp::bounded<", offset, ">() * ::capnp::ELEMENTS, value", defaultMaskParam, ");\n",
             "}\n"
-            "\n")
+            "\n"),
+            kj::strTree()
       };
 
     } else if (kind == FieldKind::INTERFACE) {
@@ -1517,7 +1520,8 @@ private:
             "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS));\n"
             "}\n"
             "#endif  // !CAPNP_LITE\n"
-            "\n")
+            "\n"),
+        kj::strTree(),
       };
 
     } else if (kind == FieldKind::ANY_POINTER) {
@@ -1571,7 +1575,8 @@ private:
             "  result.clear();\n"
             "  return result;\n"
             "}\n"
-            "\n")
+            "\n"),
+        kj::strTree(),
       };
 
     } else {
@@ -1807,7 +1812,8 @@ private:
             "}\n",
             COND(type.hasDisambiguatedTemplate(), "#endif  // !_MSC_VER || __clang__\n"),
             COND(shouldExcludeInLiteMode, "#endif  // !CAPNP_LITE\n"),
-            "\n")
+            "\n"),
+            kj::strTree()
       };
 
       #undef COND
@@ -1871,6 +1877,7 @@ private:
     kj::StringTree outerTypeDef;
     kj::StringTree readerBuilderDefs;
     kj::StringTree inlineMethodDefs;
+    kj::StringTree headerInlineMethodDefs;
     kj::StringTree sourceDefs;
   };
 
@@ -2115,6 +2122,9 @@ private:
                           KJ_MAP(f, fieldTexts) { return kj::mv(f.pipelineMethodDecls); })),
 
       kj::strTree(
+            KJ_MAP(f, fieldTexts) { return kj::mv(f.inlineMethodDefs); }
+      ),
+      kj::strTree(
           structNode.getDiscriminantCount() == 0 ? kj::strTree() : kj::strTree(
               templateContext.allDecls(),
               "inline ", whichName, " ", fullName, "::Reader::which() const {\n"
@@ -2127,7 +2137,7 @@ private:
               "      ::capnp::bounded<", discrimOffset, ">() * ::capnp::ELEMENTS);\n"
               "}\n"
               "\n"),
-          KJ_MAP(f, fieldTexts) { return kj::mv(f.inlineMethodDefs); }),
+          KJ_MAP(f, fieldTexts) { return kj::mv(f.headerInlineMethodDefs); }),
 
       kj::mv(defineText)
     };
@@ -2139,6 +2149,7 @@ private:
     kj::StringTree clientDecls;
     kj::StringTree serverDecls;
     kj::StringTree inlineDefs;
+    kj::StringTree headerInlineDefs;
     kj::StringTree sourceDefs;
     kj::StringTree dispatchCase;
   };
@@ -2285,6 +2296,7 @@ private:
               titleCase, "Context;\n"
           "  virtual ::kj::Promise<void> ", identifierName, "(", titleCase, "Context context);\n"),
 
+      kj::strTree(),
       implicitParams.size() == 0 ? kj::strTree() : kj::mv(requestMethodImpl),
 
       kj::strTree(
@@ -2330,6 +2342,7 @@ private:
     kj::StringTree outerTypeDef;
     kj::StringTree clientServerDefs;
     kj::StringTree inlineMethodDefs;
+    kj::StringTree headerInlineMethodDefs;
     kj::StringTree sourceDefs;
   };
 
@@ -2490,6 +2503,7 @@ private:
           "#endif  // !CAPNP_LITE\n"
           "\n"),
 
+      kj::strTree(),
       kj::strTree(
           "#if !CAPNP_LITE\n",
           templateContext.allDecls(),
@@ -2525,7 +2539,9 @@ private:
           "  return *this;\n"
           "}\n"
           "\n",
+          // TODO: Move
           KJ_MAP(m, methods) { return kj::mv(m.inlineDefs); },
+          KJ_MAP(m, methods) { return kj::mv(m.headerInlineDefs); },
           "#endif  // !CAPNP_LITE\n"),
 
       kj::strTree(
@@ -2680,6 +2696,7 @@ private:
     kj::StringTree outerTypeDef;
     kj::StringTree readerBuilderDefs;
     kj::StringTree inlineMethodDefs;
+    kj::StringTree headerInlineMethodDefs;
     kj::StringTree capnpSchemaDecls;
     kj::StringTree capnpSchemaDefs;
     kj::StringTree sourceFileDefs;
@@ -2844,6 +2861,10 @@ private:
           KJ_MAP(n, nestedTexts) { return kj::mv(n.inlineMethodDefs); }),
 
       kj::strTree(
+          kj::mv(top.headerInlineMethodDefs),
+          KJ_MAP(n, nestedTexts) { return kj::mv(n.headerInlineMethodDefs); }),
+
+      kj::strTree(
           kj::mv(schemaDecl),
           kj::mv(top.capnpSchemaDecls),
           KJ_MAP(n, nestedTexts) { return kj::mv(n.capnpSchemaDecls); }),
@@ -2860,8 +2881,8 @@ private:
 
     if (templateContext.isGeneric()) {
       // This is a template, so move all source declarations into the header.
-      result.inlineMethodDefs = kj::strTree(
-          kj::mv(result.inlineMethodDefs), kj::mv(result.sourceFileDefs));
+      result.headerInlineMethodDefs = kj::strTree(
+          kj::mv(result.headerInlineMethodDefs), kj::mv(result.sourceFileDefs));
       result.sourceFileDefs = kj::strTree();
     }
 
@@ -2892,6 +2913,7 @@ private:
           kj::mv(structText.outerTypeDef),
           kj::mv(structText.readerBuilderDefs),
           kj::mv(structText.inlineMethodDefs),
+          kj::mv(structText.headerInlineMethodDefs),
 
           kj::strTree(),
           kj::strTree(),
@@ -2914,7 +2936,7 @@ private:
 
           kj::strTree(),
           kj::strTree(),
-
+          kj::strTree(),
           kj::strTree(
               // We declare enums in the capnp::schemas namespace and then typedef them into
               // place because we don't want them to be parameterized for generics.
@@ -2942,6 +2964,7 @@ private:
           kj::mv(interfaceText.outerTypeDef),
           kj::mv(interfaceText.clientServerDefs),
           kj::mv(interfaceText.inlineMethodDefs),
+          kj::mv(interfaceText.headerInlineMethodDefs),
 
           kj::strTree(),
           kj::strTree(),
@@ -2961,6 +2984,7 @@ private:
 
           kj::strTree(),
           kj::strTree(),
+          kj::strTree(),
 
           kj::mv(constText.def),
         };
@@ -2968,6 +2992,7 @@ private:
 
       case schema::Node::ANNOTATION: {
         return NodeText {
+          kj::strTree(),
           kj::strTree(),
           kj::strTree(),
           kj::strTree(),
@@ -3088,7 +3113,9 @@ private:
           separator, "\n",
           KJ_MAP(n, nodeTexts) { return kj::mv(n.readerBuilderDefs); },
           separator, "\n",
-          KJ_MAP(n, nodeTexts) { return kj::mv(n.inlineMethodDefs); },
+          "// headerInlineMethodDefs\n",
+          KJ_MAP(n, nodeTexts) { return kj::mv(n.headerInlineMethodDefs); },
+         separator, "\n",
           KJ_MAP(n, namespaceParts) { return kj::strTree("}  // namespace\n"); },
           "\n"
           "CAPNP_END_HEADER\n"
@@ -3109,7 +3136,15 @@ private:
               "\n", separator, "\n",
               KJ_MAP(n, namespaceParts) { return kj::strTree("namespace ", n, " {\n"); }, "\n",
               kj::mv(sourceDefs), "\n",
-              KJ_MAP(n, namespaceParts) { return kj::strTree("}  // namespace\n"); }, "\n"))
+              KJ_MAP(n, namespaceParts) { return kj::strTree("}  // namespace\n"); }, "\n"),
+
+          // Inlines moved to src
+          separator, "\n",
+          kj::strTree("// Inlines moved to src:\n"),
+          KJ_MAP(n, namespaceParts) { return kj::strTree("namespace ", n, " {\n"); }, "\n",
+          KJ_MAP(n, nodeTexts) { return kj::mv(n.inlineMethodDefs); },
+          KJ_MAP(n, namespaceParts) { return kj::strTree("}  // namespace\n"); }
+      )
     };
   }
 
