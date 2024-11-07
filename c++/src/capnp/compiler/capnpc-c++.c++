@@ -1666,9 +1666,6 @@ private:
 
     } else {
       // Blob, struct, list, or template param.  These have only minor differences.
-
-      bool isTemplated = templateContext.isGeneric();
-      kj::String maybeInline = isTemplated ? kj::str("inline ") : kj::str();
       uint64_t typeId = field.getContainingStruct().getProto().getId();
       kj::String defaultParam = defaultOffset == 0 ? kj::str() : kj::str(
           ",\n        ::capnp::schemas::bp_", kj::hex(typeId), " + ", defaultOffset,
@@ -1684,6 +1681,9 @@ private:
       bool shouldExcludeInLiteMode = type.hasInterfaces();
       bool shouldTemplatizeInit = typeSchema.which() == schema::Type::ANY_POINTER &&
           kind != FieldKind::BRAND_PARAMETER;
+
+      bool isTemplated = templateContext.isGeneric();
+      kj::String maybeInline = isTemplated ? kj::str("inline ") : kj::str();
 
       CppTypeName elementReaderType;
       if (typeSchema.isList()) {
@@ -1760,7 +1760,7 @@ private:
 
       #define COND(cond, ...) ((cond) ? kj::strTree(__VA_ARGS__) : kj::strTree())
 
-    if (hasDiscriminantValue(proto)) {
+    if (!isTemplated && hasDiscriminantValue(proto)) {
       unionDiscrim = makeDiscriminantChecks2(scope, baseName, field.getContainingStruct(),
                                             templateContext);
     }
@@ -1812,42 +1812,6 @@ private:
               "  ::capnp::_::PointerHelpers<", type, ">::set(_builder.getPointerField(\n"
             "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS), value);\n"
               "}\n"),
-            COND(shouldIncludeStructInit,
-              COND(shouldTemplatizeInit,
-                templateContext.allDecls(),
-                "template <typename T_>\n",
-                maybeInline, "::capnp::BuilderFor<T_> ", scope, "Builder::init", titleCase, "As() {\n",
-                "  static_assert(::capnp::kind<T_>() == ::capnp::Kind::STRUCT,\n"
-                "                \"", proto.getName(), " must be a struct\");\n",
-                unionDiscrim.set,
-                "  return ::capnp::_::PointerHelpers<T_>::init(_builder.getPointerField(\n"
-                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS));\n"
-                "}\n"),
-              COND(!shouldTemplatizeInit,
-                templateContext.allDecls(),
-                maybeInline, builderType, " ", scope, "Builder::init", titleCase, "() {\n",
-                unionDiscrim.set,
-                "  return ::capnp::_::PointerHelpers<", type, ">::init(_builder.getPointerField(\n"
-                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS));\n"
-                "}\n")),
-            COND(shouldIncludeSizedInit,
-              COND(shouldTemplatizeInit,
-                templateContext.allDecls(),
-                "template <typename T_>\n",
-                maybeInline, "::capnp::BuilderFor<T_> ", scope, "Builder::init", titleCase, "As(unsigned int size) {\n",
-                "  static_assert(::capnp::kind<T_>() == ::capnp::Kind::LIST,\n"
-                "                \"", proto.getName(), " must be a list\");\n",
-                unionDiscrim.set,
-                "  return ::capnp::_::PointerHelpers<T_>::init(_builder.getPointerField(\n"
-                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS), size);\n"
-                "}\n"),
-              COND(!shouldTemplatizeInit,
-                templateContext.allDecls(),
-                maybeInline, builderType, " ", scope, "Builder::init", titleCase, "(unsigned int size) {\n",
-                unionDiscrim.set,
-                "  return ::capnp::_::PointerHelpers<", type, ">::init(_builder.getPointerField(\n"
-                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS), size);\n"
-                "}\n")),
             templateContext.allDecls(),
             maybeInline, "void ", scope, "Builder::adopt", titleCase, "(\n"
             "    ::capnp::Orphan<", type, ">&& value) {\n",
@@ -1867,6 +1831,44 @@ private:
             COND(type.hasDisambiguatedTemplate(), "#endif  // !_MSC_VER || __clang__\n"),
             COND(shouldExcludeInLiteMode, "#endif  // !CAPNP_LITE\n"),
             "\n"
+      );
+      auto dd2 = kj::strTree(COND(shouldIncludeStructInit,
+              COND(shouldTemplatizeInit,
+                templateContext.allDecls(),
+                "template <typename T_>\n",
+                maybeInline, "::capnp::BuilderFor<T_> ", scope, "Builder::init", titleCase, "As() {\n",
+                "  static_assert(::capnp::kind<T_>() == ::capnp::Kind::STRUCT,\n"
+                "                \"", proto.getName(), " must be a struct\");\n",
+                unionDiscrim.set,
+                "  return ::capnp::_::PointerHelpers<T_>::init(_builder.getPointerField(\n"
+                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS));\n"
+                "}\n"),
+              COND(!shouldTemplatizeInit,
+                templateContext.allDecls(),
+                maybeInline, builderType, " ", scope, "Builder::init", titleCase, "() {\n",
+                unionDiscrim.set,
+                "  return ::capnp::_::PointerHelpers<", type, ">::init(_builder.getPointerField(\n"
+                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS));\n"
+                "}\n")));
+      auto dd3 = kj::strTree(
+            COND(shouldIncludeSizedInit,
+              COND(shouldTemplatizeInit,
+                templateContext.allDecls(),
+                "template <typename T_>\n",
+                maybeInline, "::capnp::BuilderFor<T_> ", scope, "Builder::init", titleCase, "As(unsigned int size) {\n",
+                "  static_assert(::capnp::kind<T_>() == ::capnp::Kind::LIST,\n"
+                "                \"", proto.getName(), " must be a list\");\n",
+                unionDiscrim.set,
+                "  return ::capnp::_::PointerHelpers<T_>::init(_builder.getPointerField(\n"
+                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS), size);\n"
+                "}\n"),
+              COND(!shouldTemplatizeInit,
+                templateContext.allDecls(),
+                maybeInline, builderType, " ", scope, "Builder::init", titleCase, "(unsigned int size) {\n",
+                unionDiscrim.set,
+                "  return ::capnp::_::PointerHelpers<", type, ">::init(_builder.getPointerField(\n"
+                "      ::capnp::bounded<", offset, ">() * ::capnp::POINTERS), size);\n"
+                "}\n"))
             );
       return FieldText {
         kj::strTree(
@@ -1906,8 +1908,14 @@ private:
             COND(shouldIncludePipelineGetter,
               "  ", maybeInline, pipelineType, " get", titleCase, "();\n")),
 
-        isTemplated ? kj::mv(dd) : kj::strTree(),
+        kj::strTree(
+          isTemplated ? kj::mv(dd) : kj::strTree(),
+          (isTemplated || (shouldIncludeStructInit && shouldTemplatizeInit)) ? kj::mv(dd2) : kj::strTree(),
+          (isTemplated || (shouldIncludeSizedInit && shouldTemplatizeInit)) ? kj::mv(dd3) : kj::strTree()),
+        kj::strTree(
         isTemplated ? kj::strTree() : kj::mv(dd),
+          (!isTemplated && !(shouldIncludeStructInit && shouldTemplatizeInit)) ? kj::mv(dd2) : kj::strTree(),
+          (!isTemplated && !(shouldIncludeSizedInit && shouldTemplatizeInit)) ? kj::mv(dd3) : kj::strTree()),
         //kj::strTree(
           #if 0
             kj::mv(unionDiscrim.isDefs),
