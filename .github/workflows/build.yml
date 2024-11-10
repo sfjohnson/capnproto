@@ -14,10 +14,6 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Install dependencies
-        run: |
-          brew install automake libtool
-
       - name: Configure and make
         run: |
           mkdir install
@@ -30,7 +26,7 @@ jobs:
       - name: Prepare output
         run: |
           pushd install/include
-          zip -r ../include.zip .
+          zip -r ../../include.zip .
           popd
           mv install/lib/libcapnp.a ./libcapnp-macos12.a
           mv install/lib/libkj.a ./libkj-macos12.a
@@ -49,14 +45,124 @@ jobs:
             capnpc-c++-macos12
             LICENSE
 
+  build-macos-arm64:
+    runs-on: macos-14
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Configure and make
+        run: |
+          brew install libtool automake
+          mkdir install
+          cd c++
+          autoreconf -i
+          ./configure --prefix="${{ github.workspace }}/install"
+          make -j4 check
+          make install
+
+      - name: Prepare output
+        run: |
+          mv install/lib/libcapnp.a ./libcapnp-macos-arm64.a
+          mv install/lib/libkj.a ./libkj-macos-arm64.a
+          mv install/bin/capnp ./capnp-macos-arm64
+          mv install/bin/capnpc-c++ ./capnpc-c++-macos-arm64
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-macos-arm64
+          path: |
+            libcapnp-macos-arm64.a
+            libkj-macos-arm64.a
+            capnp-macos-arm64
+            capnpc-c++-macos-arm64
+
+  build-linux:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Get RPi toolchain
+        run: |
+          wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.1.8/aarch64-rpi4-linux-gnu.tar.xz
+          tar xf aarch64-rpi4-linux-gnu.tar.xz -C ~
+
+      - name: Configure and make linux-x64
+        run: |
+          ./autogen.sh
+          mkdir install-x64
+          cd c++
+          autoreconf -i
+          ./configure --prefix="${{ github.workspace }}/install-x64"
+          make -j4 check
+          make install
+
+      # for the cross compilation to work we need the x64 binaries we just made to be in $PATH
+      - name: Configure and make RPi
+        run: |
+          echo "${{ github.workspace }}/install-x64/bin" >> $GITHUB_PATH
+          mkdir install-arm64
+          cd c++
+          make clean
+          ./configure --with-external-capnp --host=aarch64-rpi4-linux-gnu --prefix="${{ github.workspace }}/install-arm64"
+          make -j4
+          make install
+        env:
+          AR: /home/runner/aarch64-rpi4-linux-gnu/bin/aarch64-rpi4-linux-gnu-ar
+          RANLIB: /home/runner/aarch64-rpi4-linux-gnu/bin/aarch64-rpi4-linux-gnu-ranlib
+          LD: /home/runner/aarch64-rpi4-linux-gnu/bin/aarch64-rpi4-linux-gnu-gcc
+          CC: /home/runner/aarch64-rpi4-linux-gnu/bin/aarch64-rpi4-linux-gnu-gcc
+          CXX: /home/runner/aarch64-rpi4-linux-gnu/bin/aarch64-rpi4-linux-gnu-c++
+
+      - name: Prepare output
+        run: |
+          mv install-x64/lib/libcapnp.a ./libcapnp-linux-x64.a
+          mv install-x64/lib/libkj.a ./libkj-linux-x64.a
+          mv install-x64/bin/capnp ./capnp-linux-x64
+          mv install-x64/bin/capnpc-c++ ./capnpc-c++-linux-x64
+          mv install-arm64/lib/libcapnp.a ./libcapnp-rpi-arm64.a
+          mv install-arm64/lib/libkj.a ./libkj-rpi-arm64.a
+          mv install-arm64/bin/capnp ./capnp-rpi-arm64
+          mv install-arm64/bin/capnpc-c++ ./capnpc-c++-rpi-arm64
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-linux
+          path: |
+            libcapnp-linux-x64.a
+            libkj-linux-x64.a
+            capnp-linux-x64
+            capnpc-c++-linux-x64
+            libcapnp-rpi-arm64.a
+            libkj-rpi-arm64.a
+            capnp-rpi-arm64
+            capnpc-c++-rpi-arm64
+
   create-release:
     runs-on: ubuntu-22.04
-    needs: [build-macos]
+    needs: [build-macos, build-macos-arm64, build-linux]
     steps:
       - name: Get build output macos12
         uses: actions/download-artifact@v4
         with:
           name: build-output-macos12
+
+      - name: Get build output macos-arm64
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-macos-arm64
+
+      - name: Get build output linux
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-linux
 
       - name: Create release
         uses: softprops/action-gh-release@v2
@@ -64,9 +170,21 @@ jobs:
           files: |
             include.zip
             libcapnp-macos12.a
+            libcapnp-macos-arm64.a
+            libcapnp-linux-x64.a
+            libcapnp-rpi-arm64.a
             libkj-macos12.a
+            libkj-macos-arm64.a
+            libkj-linux-x64.a
+            libkj-rpi-arm64.a
             capnp-macos12
+            capnp-macos-arm64
+            capnp-linux-x64
+            capnp-rpi-arm64
             capnpc-c++-macos12
+            capnpc-c++-macos-arm64
+            capnpc-c++-linux-x64
+            capnpc-c++-rpi-arm64
             LICENSE
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
