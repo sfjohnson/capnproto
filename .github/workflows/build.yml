@@ -93,6 +93,7 @@ jobs:
           wget https://github.com/sfjohnson/rpi-toolchain/releases/download/v0.1.8/aarch64-rpi4-linux-gnu.tar.xz
           tar xf aarch64-rpi4-linux-gnu.tar.xz -C ~
 
+      # for the cross compilation to work we need the x64 binaries we make here to be in PATH
       - name: Configure and make linux-x64
         run: |
           mkdir install-x64
@@ -101,11 +102,10 @@ jobs:
           ./configure --prefix="${{ github.workspace }}/install-x64"
           make -j4 check
           make install
+          echo "${{ github.workspace }}/install-x64/bin" >> $GITHUB_PATH
 
-      # for the cross compilation to work we need the x64 binaries we just made to be in $PATH
       - name: Configure and make RPi
         run: |
-          echo "${{ github.workspace }}/install-x64/bin" >> $GITHUB_PATH
           mkdir install-arm64
           cd c++
           make clean
