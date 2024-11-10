@@ -1,0 +1,72 @@
+name: Build Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  build-macos:
+    runs-on: macos-12
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Install dependencies
+        run: |
+          brew install automake libtool
+
+      - name: Configure and make
+        run: |
+          mkdir install
+          cd c++
+          autoreconf -i
+          ./configure --prefix="${{ github.workspace }}/install"
+          make -j4 check
+          make install
+
+      - name: Prepare output
+        run: |
+          pushd install/include
+          zip -r ../include.zip .
+          popd
+          mv install/lib/libcapnp.a ./libcapnp-macos12.a
+          mv install/lib/libkj.a ./libkj-macos12.a
+          mv install/bin/capnp ./capnp-macos12
+          mv install/bin/capnpc-c++ ./capnpc-c++-macos12
+
+      - name: Upload build output
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-output-macos12
+          path: |
+            include.zip
+            libcapnp-macos12.a
+            libkj-macos12.a
+            capnp-macos12
+            capnpc-c++-macos12
+            LICENSE
+
+  create-release:
+    runs-on: ubuntu-22.04
+    needs: [build-macos]
+    steps:
+      - name: Get build output macos12
+        uses: actions/download-artifact@v4
+        with:
+          name: build-output-macos12
+
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            include.zip
+            libcapnp-macos12.a
+            libkj-macos12.a
+            capnp-macos12
+            capnpc-c++-macos12
+            LICENSE
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
