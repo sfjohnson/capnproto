@@ -95,7 +95,6 @@ jobs:
 
       - name: Configure and make linux-x64
         run: |
-          ./autogen.sh
           mkdir install-x64
           cd c++
           autoreconf -i
