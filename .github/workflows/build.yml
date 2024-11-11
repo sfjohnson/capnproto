@@ -19,7 +19,7 @@ jobs:
           mkdir install
           cd c++
           autoreconf -i
-          ./configure --prefix="${{ github.workspace }}/install"
+          ./configure --disable-shared --prefix="${{ github.workspace }}/install"
           make -j4 check
           make install
 
@@ -59,7 +59,7 @@ jobs:
           mkdir install
           cd c++
           autoreconf -i
-          ./configure --prefix="${{ github.workspace }}/install"
+          ./configure --disable-shared --prefix="${{ github.workspace }}/install"
           make -j4 check
           make install
 
@@ -99,7 +99,7 @@ jobs:
           mkdir install-x64
           cd c++
           autoreconf -i
-          ./configure --prefix="${{ github.workspace }}/install-x64"
+          ./configure --disable-shared --prefix="${{ github.workspace }}/install-x64"
           make -j4 check
           make install
           echo "${{ github.workspace }}/install-x64/bin" >> $GITHUB_PATH
@@ -109,7 +109,7 @@ jobs:
           mkdir install-arm64
           cd c++
           make clean
-          ./configure --with-external-capnp --host=aarch64-rpi4-linux-gnu --prefix="${{ github.workspace }}/install-arm64"
+          ./configure --disable-shared --with-external-capnp --host=aarch64-rpi4-linux-gnu --prefix="${{ github.workspace }}/install-arm64"
           make -j4
           make install
         env:
